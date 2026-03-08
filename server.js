@@ -9,7 +9,65 @@ app.use(cors());
 
 // Root route check karne ke liye ki server chal raha hai
 app.get('/', (req, res) => {
-    res.send('API Chal Rahi Hai! Music search karne ke liye /api/search?song=Galiyan ka use karein.');
+    res.send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music API - Running</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .status {
+            color: #28a745;
+            font-weight: bold;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .endpoint {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Music API</h1>
+        <p class="status">✅ API Chal Rahi Hai!</p>
+        <div class="endpoint">
+            <h2>Endpoint:</h2>
+            <p>Music search karne ke liye:</p>
+            <code>/api/search?song=Galiyan</code>
+        </div>
+    </div>
+    <script>
+        window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
+    </script>
+    <script defer src="/_vercel/speed-insights/script.js"></script>
+</body>
+</html>
+    `);
 });
 
 app.get('/api/search', async (req, res) => {
