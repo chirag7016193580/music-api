@@ -1,74 +1,101 @@
-const express = require('express');
-const cors = require('cors');
-const axios = require('axios'); 
+const express = require("express");
+const cors = require("cors");
+const axios = require("axios");
 
 const app = express();
 
-// CORS ko configure karein taaki kisi bhi frontend se request aa sake
 app.use(cors());
+app.use(express.json());
 
-// Root route check karne ke liye ki server chal raha hai
-app.get('/', (req, res) => {
-    res.send('API Chal Rahi Hai! Music search karne ke liye /api/search?song=Galiyan ka use karein.');
+app.get("/", (req, res) => {
+    res.json({
+        status: true,
+        message: "Music API Running Successfully 🎵",
+        endpoint: "/api/search?song=kesariya"
+    });
 });
 
-app.get('/api/search', async (req, res) => {
+app.get("/api/search", async (req, res) => {
     try {
         const query = req.query.song;
-        if (!query) return res.json({ error: "Kripya 'song' query parameter dein." });
 
-        const apiUrl = `https://jiosaavn-api-privatecvc2.vercel.app/search/songs?query=${encodeURIComponent(query)}`;
-        console.log(`🔎 Gaana search ho raha hai: ${query}`);
-        
-        const response = await axios.get(apiUrl);
-        
-        let songsData = [];
-        if (response.data && response.data.data && response.data.data.results) {
-            songsData = response.data.data.results;
-        } else if (response.data && response.data.results) {
-            songsData = response.data.results;
+        if (!query) {
+            return res.status(400).json({
+                status: false,
+                error: "song query required"
+            });
         }
 
-        if (songsData.length === 0) {
-            console.log("❌ API ne koi result nahi diya.");
-            return res.json([]);
-        }
-        
-        const cleanSongs = songsData.map(song => {
-            let audioLink = "";
-            if (song.downloadUrl && Array.isArray(song.downloadUrl)) {
-                audioLink = song.downloadUrl[song.downloadUrl.length - 1].link; 
-            }
+        console.log(`🔍 Searching: ${query}`);
 
-            let imageLink = "";
-            if (song.image && Array.isArray(song.image)) {
-                imageLink = song.image[song.image.length - 1].link;
+        // Updated Saavn API
+        const url = `https://saavn.dev/api/search/songs?query=${encodeURIComponent(query)}`;
+
+        const response = await axios.get(url, {
+            timeout: 10000,
+            headers: {
+                "User-Agent": "Mozilla/5.0"
             }
+        });
+
+        const results = response?.data?.data?.results || [];
+
+        if (!results.length) {
+            return res.json({
+                status: false,
+                message: "No songs found"
+            });
+        }
+
+        const songs = results.map((song) => {
+
+            // Highest quality image
+            let image =
+                song.image?.[song.image.length - 1]?.url ||
+                "https://via.placeholder.com/300";
+
+            // Highest quality audio
+            let audio =
+                song.downloadUrl?.[song.downloadUrl.length - 1]?.url ||
+                "";
 
             return {
-                title: song.name || song.title || "Unknown Song",
-                artist: song.primaryArtists || song.singers || "Unknown Artist",
-                image: imageLink || "https://via.placeholder.com/150",
-                audioUrl: audioLink
+                id: song.id,
+                title: song.name,
+                artist: song.primaryArtists,
+                album: song.album?.name || "",
+                duration: song.duration,
+                image: image,
+                audioUrl: audio
             };
         });
 
-        const validSongs = cleanSongs.filter(song => song.audioUrl !== "");
-        res.json(validSongs.slice(0, 10)); 
+        // Only valid songs
+        const validSongs = songs.filter(song => song.audioUrl);
+
+        res.json({
+            status: true,
+            total: validSongs.length,
+            results: validSongs
+        });
 
     } catch (error) {
-        console.error("❌ API Error:", error.message);
-        res.status(500).json({ error: "Server connect nahi ho paya!" });
+
+        console.error("❌ ERROR:", error.message);
+
+        res.status(500).json({
+            status: false,
+            error: "Server Error",
+            message: error.message
+        });
     }
 });
 
-// Ye local testing ke liye hai
-if (process.env.NODE_ENV !== 'production') {
-    const PORT = 3000;
-    app.listen(PORT, () => {
-        console.log(`✅ Local Server chal raha hai: http://localhost:${PORT}`);
-    });
-}
+// Local server
+const PORT = process.env.PORT || 3000;
 
-// Vercel ke liye app ko export karna zaruri hai
+app.listen(PORT, () => {
+    console.log(`✅ Server running on port ${PORT}`);
+});
+
 module.exports = app;
