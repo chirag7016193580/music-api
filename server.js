@@ -7,6 +7,16 @@ const rateLimit = require('express-rate-limit'); // Spam rokne ke liye
 
 const app = express();
 
+// --- CRASH PROTECTION ---
+// Agar code mein koi unexpected error aati hai, toh yeh server ko band hone se rokega
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err.message);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection:', reason);
+});
+// ------------------------
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -18,7 +28,7 @@ const cache = new NodeCache({ stdTTL: 3600 });
 const apiLimiter = rateLimit({
     windowMs: 1 * 60 * 1000, // 1 minute
     max: 30,
-    message: { error: "Aapne bahut zyada requests ki hain, kripya 1 minute baad try karein!" }
+    message: { error: "Aapne bahut zyada requests ki hain, kripya thodi der baad try karein!" }
 });
 
 // API Route (Rate limiter apply kiya gaya hai)
@@ -39,7 +49,7 @@ app.get('/api/search', apiLimiter, async (req, res) => {
         const apiUrl = `https://jiosaavn-api-privatecvc2.vercel.app/search/songs?query=${encodeURIComponent(query)}`;
         console.log(`🔎 Naya API call ho raha hai: ${query}`);
         
-        // 4. Timeout Add kiya (Agar third-party API 8 second me reply na de toh error dega, server latkega nahi)
+        // 4. Timeout Add kiya (Agar third-party API 8 second me reply na de toh error dega)
         const response = await axios.get(apiUrl, { timeout: 8000 });
         
         // 5. Modern Optional Chaining (?.) se code clean kiya
@@ -75,14 +85,12 @@ app.get('/api/search', apiLimiter, async (req, res) => {
         // 6. Result ko cache me save karein future use ke liye
         cache.set(query, validSongs);
 
-        // Vercel Serverless Edge Cache (Global fast response ke liye)
-        res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
         res.json(validSongs); 
 
     } catch (error) {
         console.error("❌ API Error:", error.message);
         
-        // Error handling thodi detail mein
+        // Error handling
         if (error.code === 'ECONNABORTED') {
             return res.status(504).json({ error: "Gaana dhundhne mein bahut waqt lag raha hai (Timeout)." });
         }
@@ -90,13 +98,8 @@ app.get('/api/search', apiLimiter, async (req, res) => {
     }
 });
 
-// Vercel par 'app.listen' ki zarurat nahi hoti, isliye isko condition me rakha hai
-if (process.env.NODE_ENV !== 'production') {
-    const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => {
-        console.log(`🚀 Next-Level Smart Server chal raha hai: http://localhost:${PORT}`);
-    });
-}
-
-// Vercel Serverless Function ke liye Express app ko export karna ZAROORI hai
-module.exports = app;
+// Standard Express Listen Setup (Yeh hamesha chalega, crash nahi hoga)
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`🚀 Standard Express Server chal raha hai: http://localhost:${PORT}`);
+});
