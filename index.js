@@ -1,101 +1,95 @@
- const express = require("express");
-const cors = require("cors");
-const axios = require("axios");
- 
+require('dotenv').config(); // Environment variables ke liye
+const express = require('express');
+const cors = require('cors');
+const axios = require('axios');
+const NodeCache = require('node-cache'); // Caching ke liye
+const rateLimit = require('express-rate-limit'); // Spam rokne ke liye
+
 const app = express();
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-app.get("/", (req, res) => {
-    res.json({
-        status: true,
-        message: "Music API Running Successfully 🎵",
-        endpoint: "/api/search?song=kesariya"
-    });
+// 1. Caching Setup: Results ko 1 ghante (3600 seconds) tak save rakhega
+const cache = new NodeCache({ stdTTL: 3600 });
+
+// 2. Rate Limiter: Ek IP address 1 minute mein maximum 30 requests hi kar sakta hai
+const apiLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 30,
+    message: { error: "Aapne bahut zyada requests ki hain, kripya 1 minute baad try karein!" }
 });
 
-app.get("/api/search", async (req, res) => {
+// API Route (Rate limiter apply kiya gaya hai)
+app.get('/api/search', apiLimiter, async (req, res) => {
     try {
-        const query = req.query.song;
-
+        // Query ko clean karna (extra spaces hatana)
+        const query = req.query.song?.trim();
         if (!query) {
-            return res.status(400).json({
-                status: false,
-                error: "song query required"
-            });
+            return res.status(400).json({ error: "Kripya song ka naam bhejein! (e.g. ?song=tum hi ho)" });
         }
 
-        console.log(`🔍 Searching: ${query}`);
-
-        // Updated Saavn API
-        const url = `https://saavn.dev/api/search/songs?query=${encodeURIComponent(query)}`;
-
-        const response = await axios.get(url, {
-            timeout: 10000,
-            headers: {
-                "User-Agent": "Mozilla/5.0"
-            }
-        });
-
-        const results = response?.data?.data?.results || [];
-
-        if (!results.length) {
-            return res.json({
-                status: false,
-                message: "No songs found"
-            });
+        // 3. Check in Cache First (Fast Response)
+        if (cache.has(query)) {
+            console.log(`⚡ Cache se result diya: ${query}`);
+            return res.json(cache.get(query));
         }
 
-        const songs = results.map((song) => {
+        const apiUrl = `https://jiosaavn-api-privatecvc2.vercel.app/search/songs?query=${encodeURIComponent(query)}`;
+        console.log(`🔎 Naya API call ho raha hai: ${query}`);
+        
+        // 4. Timeout Add kiya (Agar third-party API 8 second me reply na de toh error dega, server latkega nahi)
+        const response = await axios.get(apiUrl, { timeout: 8000 });
+        
+        // 5. Modern Optional Chaining (?.) se code clean kiya
+        const songsData = response.data?.data?.results || response.data?.results || [];
 
-            // Highest quality image
-            let image =
-                song.image?.[song.image.length - 1]?.url ||
-                "https://via.placeholder.com/300";
+        if (!Array.isArray(songsData) || songsData.length === 0) {
+            console.log("❌ API ne koi result nahi diya.");
+            return res.status(404).json({ error: "Koi gaana nahi mila!" });
+        }
+        
+        // Helper function (High quality link nikalne ke liye)
+        const getHighQualityLink = (arr) => {
+            return (Array.isArray(arr) && arr.length > 0) ? arr[arr.length - 1].link : "";
+        };
 
-            // Highest quality audio
-            let audio =
-                song.downloadUrl?.[song.downloadUrl.length - 1]?.url ||
-                "";
-
+        const cleanSongs = songsData.map(song => {
             return {
-                id: song.id,
-                title: song.name,
-                artist: song.primaryArtists,
-                album: song.album?.name || "",
-                duration: song.duration,
-                image: image,
-                audioUrl: audio
+                id: song.id || Date.now().toString(),
+                title: song.name || song.title || "Unknown Song",
+                artist: song.primaryArtists || song.singers || "Unknown Artist",
+                image: getHighQualityLink(song.image) || "https://via.placeholder.com/150",
+                audioUrl: getHighQualityLink(song.downloadUrl)
             };
         });
 
-        // Only valid songs
-        const validSongs = songs.filter(song => song.audioUrl);
+        // Jin gaano ka audio link mila hai, sirf unhi ko filter karenge
+        const validSongs = cleanSongs.filter(song => song.audioUrl !== "").slice(0, 10);
+        
+        if (validSongs.length === 0) {
+            return res.status(404).json({ error: "Gaane mile par play karne layak link nahi mila!" });
+        }
 
-        res.json({
-            status: true,
-            total: validSongs.length,
-            results: validSongs
-        });
+        // 6. Result ko cache me save karein future use ke liye
+        cache.set(query, validSongs);
+
+        res.json(validSongs); 
 
     } catch (error) {
-
-        console.error("❌ ERROR:", error.message);
-
-        res.status(500).json({
-            status: false,
-            error: "Server Error",
-            message: error.message
-        });
+        console.error("❌ API Error:", error.message);
+        
+        // Error handling thodi detail mein
+        if (error.code === 'ECONNABORTED') {
+            return res.status(504).json({ error: "Gaana dhundhne mein bahut waqt lag raha hai (Timeout)." });
+        }
+        res.status(500).json({ error: "Server connect nahi ho paya, thodi der baad try karein!" });
     }
 });
 
-// Local server
+// Dynamic PORT for deployment (like Render, Heroku)
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
-    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`🚀 Next-Level Smart Server chal raha hai: http://localhost:${PORT}`);
 });
-
-module.exports = app;
