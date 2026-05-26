@@ -75,6 +75,8 @@ app.get('/api/search', apiLimiter, async (req, res) => {
         // 6. Result ko cache me save karein future use ke liye
         cache.set(query, validSongs);
 
+        // Vercel Serverless Edge Cache (Global fast response ke liye)
+        res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
         res.json(validSongs); 
 
     } catch (error) {
@@ -88,8 +90,13 @@ app.get('/api/search', apiLimiter, async (req, res) => {
     }
 });
 
-// Dynamic PORT for deployment (like Render, Heroku)
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Next-Level Smart Server chal raha hai: http://localhost:${PORT}`);
-});
+// Vercel par 'app.listen' ki zarurat nahi hoti, isliye isko condition me rakha hai
+if (process.env.NODE_ENV !== 'production') {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => {
+        console.log(`🚀 Next-Level Smart Server chal raha hai: http://localhost:${PORT}`);
+    });
+}
+
+// Vercel Serverless Function ke liye Express app ko export karna ZAROORI hai
+module.exports = app;
